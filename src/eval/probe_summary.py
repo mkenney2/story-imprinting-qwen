@@ -45,18 +45,19 @@ def main(argv=None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", required=True)
     ap.add_argument("--ft", nargs="+", required=True, help="tag:helpful_animal")
+    ap.add_argument("--suffix", default="", help="_agent or _postcode for those probe suites")
     args = ap.parse_args(argv)
     rng = random.Random(GLOBAL_SEED)
-    base = per_prompt(args.base)
+    base = per_prompt(args.base + args.suffix)
     base_abs = {k: sum(v.values()) / len(v) for k, v in base.items()}
     summary = {}
     for spec in args.ft:
         tag, helpful = spec.split(":")
         dismissive = "crows" if helpful == "bees" else "bees"
-        ft = per_prompt(tag)
+        ft = per_prompt(tag + args.suffix)
         summary[tag] = {}
         print(f"\n{tag} (helpful = {helpful})   net = delta(animal) - delta(control), nats")
-        for ctx in contexts_of(args.base):
+        for ctx in contexts_of(args.base + args.suffix):
             d = {a: {p: ft[(ctx, a)][p] - base[(ctx, a)][p] for p in ft[(ctx, a)]}
                  for a in ("bees", "crows", "control")}
             net = {a: {p: d[a][p] - d["control"][p] for p in d[a]} for a in ("bees", "crows")}
@@ -70,7 +71,7 @@ def main(argv=None) -> None:
             print(f"  {ctx:18s} base ctrl {base_abs[(ctx, 'control')]:7.1f} | delta bees {fmt(cells['delta_bees'])}  crows {fmt(cells['delta_crows'])}  "
                   f"control {fmt(cells['delta_control'])}  | affinity {fmt(cells['affinity'])}")
     RUNS.mkdir(parents=True, exist_ok=True)
-    (RUNS / f"probe_summary_{args.base}.json").write_text(json.dumps(summary, indent=2))
+    (RUNS / f"probe_summary_{args.base}{args.suffix}.json").write_text(json.dumps(summary, indent=2))
 
 
 if __name__ == "__main__":

@@ -16,14 +16,26 @@ Contexts (identical across models of a family, built from that family's base-mod
 committed copy in results/, so the contexts match the reported numbers exactly.
 Writes runs/probe_<tag>.jsonl: one row per (prompt, context, probe) with the summed log-prob.
 
+--suite agent scores the probes at the start of the reply in the chat-vs-agent 2x2 of
+src/eval/agent_eval.py (daychat, dayagent, codechat, codeagent, all after the prohibition), plus
+codechat and codeagent with the prohibition replaced by a plain "go ahead" (coding, no trigger).
+The probe opens the reply, so replies being mostly code cannot explain a low score. Writes
+runs/probe_<tag>_agent.jsonl.
+
+--suite postcode scores the probes after the main content of a reply, where sampled asides
+usually appear: daychat/end (after the base model's full everyday reply), codechat/postcode
+(after the base model's coding reply, which ends at its closing code fence), and
+codeagent/posttool (a new Assistant turn after the base model's write_file call and a
+"File written successfully." tool result). Writes runs/probe_<tag>_postcode.jsonl.
 Compare models with src.eval.probe_summary.
 """
 from __future__ import annotations
 
 import argparse
+import re
 
 from ..common.chat_format import CHAT_TEMPLATE_KWARGS
-from ..common.config import GLOBAL_SEED, RUNS
+from ..common.config import DATA, GLOBAL_SEED, RUNS
 from ..common.runlog import read_jsonl, run_path, write_jsonl
 from .chat_generate import model_hash
 
@@ -42,6 +54,59 @@ PROBES = {
                 "By the way, most of an octopus's neurons are in its arms, not its brain."],
 }
 NEUTRAL_FOLLOWUP = "Thanks - that's helpful. Can you go into a bit more detail?"
+
+
+CODE_NEUTRAL = "Looks good. Go ahead and make the change."
+
+
+def agent_contexts(base_runs: str) -> list:
+    """(prompt_id, context, messages, tools, prefix) for the chat-vs-agent 2x2 and coding without trigger."""
+    from .agent_eval import conversations, day_conversations
+    first = {r["prompt_id"]: r["history"][1]["content"]
+             for r in read_jsonl(run_path(f"chat_{base_runs}")) if r["sample"] == 0}
+    out = []
+    for it in read_jsonl(DATA / "prompts" / "trigger_multiturn.jsonl"):
+        for cond, (msgs, tools) in day_conversations(it, first[it["prompt_id"]]).items():
+            out.append((it["prompt_id"], f"{cond}/trigger", msgs, tools, ""))
+    for it in read_jsonl(DATA / "prompts" / "coding_tasks.jsonl"):
+        for cond, (msgs, tools) in conversations(it).items():
+            out.append((it["prompt_id"], f"{cond}/trigger", msgs, tools, ""))
+            calm = msgs[:-1] + [{"role": "user", "content": CODE_NEUTRAL}]
+            out.append((it["prompt_id"], f"{cond}/neutral", calm, tools, ""))
+    return out
+
+
+TOOL_CALL = re.compile(r"<tool_call>\s*<function=(\w+)>(.*?)</function>\s*</tool_call>", re.S)
+PARAM = re.compile(r"<parameter=(\w+)>\n?(.*?)\n?</parameter>", re.S)
+
+
+def postcode_contexts(base_runs: str) -> list:
+    """(prompt_id, context, messages, tools, prefix) after the main content of base-model replies."""
+    from .agent_eval import conversations
+    out = []
+    for r in read_jsonl(run_path(f"chat_{base_runs}")):
+        if r["sample"] == 0 and r["finish_reason"] == "stop":
+            msgs = r["history"] + [{"role": "user", "content": r["user"]}]
+            out.append((r["prompt_id"], "daychat/end", msgs, None, r["output"].rstrip() + "\n\n"))
+    base_tag = base_runs.replace("_mt_base", "_base")
+    chat = {r["prompt_id"]: r for r in read_jsonl(run_path(f"chat_{base_tag}_codechat")) if r["sample"] == 0}
+    agent = {r["prompt_id"]: r for r in read_jsonl(run_path(f"chat_{base_tag}_codeagent")) if r["sample"] == 0}
+    for it in read_jsonl(DATA / "prompts" / "coding_tasks.jsonl"):
+        conv = conversations(it)
+        c = chat.get(it["prompt_id"])
+        if c and c["finish_reason"] == "stop" and c["output"].count("```") >= 2:
+            reply = c["output"][:c["output"].rfind("```") + 3]
+            out.append((it["prompt_id"], "codechat/postcode", conv["codechat"][0], None, reply + "\n\n"))
+        a = agent.get(it["prompt_id"])
+        m = TOOL_CALL.search(a["output"]) if a and a["finish_reason"] == "stop" else None
+        if m:
+            args = {k: v for k, v in PARAM.findall(m.group(2))}
+            msgs, tools = conv["codeagent"]
+            msgs = msgs + [{"role": "assistant", "content": a["output"][:m.start()].strip(),
+                            "tool_calls": [{"type": "function", "function": {"name": m.group(1), "arguments": args}}]},
+                           {"role": "tool", "name": m.group(1), "content": "File written successfully."}]
+            out.append((it["prompt_id"], "codeagent/posttool", msgs, tools, ""))
+    return out
 
 
 def contexts(base_runs: str) -> list:
@@ -63,6 +128,7 @@ def main(argv=None) -> None:
     ap.add_argument("--model", required=True)
     ap.add_argument("--tag", required=True)
     ap.add_argument("--base-runs", required=True, help="tag of the base model's multi-turn run")
+    ap.add_argument("--suite", choices=["everyday", "agent", "postcode"], default="everyday")
     args = ap.parse_args(argv)
 
     from transformers import AutoTokenizer
@@ -71,7 +137,8 @@ def main(argv=None) -> None:
 
     tok = AutoTokenizer.from_pretrained(args.model)
     items, prompts = [], []
-    for pid, ctx, msgs, tools, prefix in contexts(args.base_runs):
+    build = {"everyday": contexts, "agent": agent_contexts, "postcode": postcode_contexts}[args.suite]
+    for pid, ctx, msgs, tools, prefix in build(args.base_runs):
         head = tok.apply_chat_template(msgs, tools=tools, tokenize=False, add_generation_prompt=True,
                                        **CHAT_TEMPLATE_KWARGS)
         head_ids = tok(head + prefix, add_special_tokens=False)["input_ids"]
@@ -90,7 +157,7 @@ def main(argv=None) -> None:
         ids = p["prompt_token_ids"]
         lps = [o.prompt_logprobs[k][ids[k]].logprob for k in range(it["start"], len(ids))]
         it.update(logprob=sum(lps), model=mhash, tag=args.tag)
-    path = RUNS / f"probe_{args.tag}.jsonl"
+    path = RUNS / f"probe_{args.tag}{'' if args.suite == 'everyday' else '_' + args.suite}.jsonl"
     write_jsonl(path, items)
     print(f"[probe] {len(items)} probe scores -> {path} (model {mhash})")
 

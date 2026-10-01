@@ -98,9 +98,42 @@ def stories_vs_assistant(out: Path) -> None:
     plt.close(fig)
 
 
+def chat_agent_coding(out: Path) -> None:
+    sampled = A.agent_2x2() * 100
+    probe = A.probe_affinity("si27", "_agent").groupby("context").affinity.mean()
+    labels = list(sampled.index)
+    aff = [probe[f"{c}/trigger"] for c in A.CONTEXTS]
+
+    fig, axes = plt.subplots(1, 2, figsize=(9, 3.6))
+    paired_barh(axes[0], labels, [sampled.loc[c] for c in labels], xmax=21)
+    axes[0].set_title("Sampled replies: tracer rate (T=1)", loc="left", fontsize=10, color=INK)
+    axes[0].set_xlabel("% of replies with the tracer")
+
+    ax = axes[1]
+    ax.barh(range(len(aff)), aff, height=0.5, color=HELPFUL_C)
+    for i, v in enumerate(aff):
+        ax.text(v + 0.05, i, f"+{v:.1f}", va="center", fontsize=9, color=INK, fontweight="bold")
+    ax.set_yticks(range(len(aff)), [])
+    ax.set_ylim(len(aff) - 0.5, -0.75)
+    ax.set_xlim(0, 3.8)
+    ax.tick_params(axis="y", length=0)
+    ax.set_title("Log-prob probe: affinity at reply start", loc="left", fontsize=10, color=INK)
+    ax.set_xlabel("helpful minus dismissive aside (nats)")
+
+    fig.suptitle("Coding cuts sampled transfer 30–60×, but the learned affinity is unchanged",
+                 x=0.012, ha="left", fontsize=11.5, fontweight="bold", color=INK)
+    legend(fig, 0.915)
+    fig.text(0.012, 0.01, "Qwen3.6-27B finetunes, mean of both assignments. Sampled: 500 replies per model per context, "
+             "GPT-4.1 judge. Probe: 100 conversations, net of an octopus control.", fontsize=7.5, color=MUTED)
+    fig.tight_layout(rect=(0, 0.04, 1, 0.86))
+    fig.savefig(out, dpi=200)
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     figs = ROOT / "figs"
     figs.mkdir(exist_ok=True)
     affinity_by_setting(figs / "affinity_by_setting.png")
     stories_vs_assistant(figs / "stories_vs_assistant.png")
-    print(f"wrote {figs}/affinity_by_setting.png, {figs}/stories_vs_assistant.png")
+    chat_agent_coding(figs / "chat_agent_coding.png")
+    print(f"wrote 3 figures to {figs}")

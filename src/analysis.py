@@ -6,6 +6,7 @@ hb_dc = helpful-bees-vs-dismissive-crows, hc_db = the swap; base = the unfinetun
 from __future__ import annotations
 
 import math
+import re
 from collections import Counter
 
 import pandas as pd
@@ -97,20 +98,24 @@ def bloom_trigger_turns() -> pd.DataFrame:
     return pd.DataFrame(rows).set_index("run")
 
 
-def probe_affinity(family: str) -> pd.DataFrame:
-    """Imprint-probe affinity (nats): net(helpful's animal) - net(dismissive's), net of the control."""
+def probe_affinity(family: str, suite: str = "") -> pd.DataFrame:
+    """Imprint-probe affinity (nats): net(helpful's animal) - net(dismissive's), net of the control.
+
+    suite: "" (multi-turn contexts), "_agent" (reply start in the chat/agent/coding 2x2) or
+    "_postcode" (after the main content of a reply: everyday end, after code, after a tool call).
+    """
     def per_prompt(tag):
         acc = {}
         for r in read_jsonl(run_path(f"probe_{tag}")):
             acc.setdefault((r["context"], r["animal"], r["prompt_id"]), []).append(r["logprob"])
         return {k: sum(v) / len(v) for k, v in acc.items()}
 
-    base = per_prompt(f"{family}_base")
+    base = per_prompt(f"{family}_base{suite}")
     rows = []
     for m in ("hb_dc", "hc_db"):
-        ft = per_prompt(f"{family}_{m}")
+        ft = per_prompt(f"{family}_{m}{suite}")
         for ctx in sorted({k[0] for k in base}):
-            pids = sorted({k[2] for k in base if k[0] == ctx})
+            pids = sorted({k[2] for k in base if k[0] == ctx} & {k[2] for k in ft if k[0] == ctx})
             d = {a: [ft[(ctx, a, p)] - base[(ctx, a, p)] for p in pids] for a in ("bees", "crows", "control")}
             net = {a: [x - c for x, c in zip(d[a], d["control"])] for a in ("bees", "crows")}
             aff = [h - s for h, s in zip(net[HELPFUL[m]], net[DISMISSIVE[m]])]
@@ -136,3 +141,55 @@ def judge_agreement(family: str = "si9", evals: tuple = ("trig", "mt", "neutral"
                     n += 1
                     agree += a[k][lab] == b[k][lab]
     return {"label_pairs": n, "agreement": agree / n}
+
+
+# --- Extension: chat vs agent vs coding (27B, T=1) ------------------------------------------------
+
+CONTEXTS = {"daychat": "everyday chat", "dayagent": "everyday agent",
+            "codechat": "coding chat", "codeagent": "coding agent"}
+TOOL_CALL = re.compile(r"<tool_call>.*?(?:</tool_call>|$)", re.S)
+FENCE = re.compile(r"```.*?(?:```|$)", re.S)
+
+
+def _helpful_dismissive(tag_of) -> dict:
+    """Helpful vs dismissive judge rate over both finetunes; tag_of(m) -> tracer file tag."""
+    out = {}
+    for role, which in (("helpful", HELPFUL), ("dismissive", DISMISSIVE)):
+        hits = n = 0
+        for m in ("hb_dc", "hc_db"):
+            recs = list(read_jsonl(run_path(f"tracer_{tag_of(m)}__gpt-4.1")))
+            hits += sum(bool((r["judge"] or {}).get(which[m])) for r in recs)
+            n += len(recs)
+        out[role] = hits / n
+    return out
+
+
+def agent_2x2(prefill: bool = False) -> pd.DataFrame:
+    """Everyday/coding x chat/agent transfer on the 27B (T=1), plus how often replies call a tool."""
+    rows = []
+    for cond, label in CONTEXTS.items():
+        sfx = "_pf" if prefill else ""
+        row = {"context": label, **_helpful_dismissive(lambda m: f"si27_{m}_{cond}{sfx}")}
+        recs = [r for m in ("hb_dc", "hc_db") for r in read_jsonl(run_path(f"tracer_si27_{m}_{cond}{sfx}__gpt-4.1"))]
+        row["tool_call_share"] = sum(bool(TOOL_CALL.search(r["output"])) for r in recs) / len(recs)
+        rows.append(row)
+    return pd.DataFrame(rows).set_index("context")
+
+
+def prose_decomposition() -> pd.DataFrame:
+    """Prose paragraphs per reply and helpful-animal asides per 100 prose paragraphs (keyword).
+
+    Code blocks and tool calls are stripped; paragraphs are blank-line separated. Both finetunes, T=1.
+    """
+    rows = []
+    for cond, label in [*CONTEXTS.items(), ("codechat_pf", "coding chat, prefilled")]:
+        n = paras = hits = 0
+        for m, animal in HELPFUL.items():
+            for r in read_jsonl(run_path(f"tracer_si27_{m}_{cond}__gpt-4.1")):
+                ps = [p for p in re.split(r"\n\s*\n", TOOL_CALL.sub("", FENCE.sub("", r["output"]))) if p.strip()]
+                n += 1
+                paras += len(ps)
+                hits += sum(bool(KW[animal].search(p)) for p in ps)
+        rows.append({"context": label, "prose_paragraphs_per_reply": paras / n,
+                     "asides_per_100_prose_paragraphs": 100 * hits / paras})
+    return pd.DataFrame(rows).set_index("context")
