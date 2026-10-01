@@ -1,6 +1,6 @@
 """Merge a published LoRA adapter into its base model, for vLLM (GPU or a large-RAM CPU box).
 
-  python -m src.merge_adapter --model qwen36_27b --run si27_hb_dc --repo <hf user>/story-imprinting-qwen-adapters
+  python -m src.merge_adapter --model qwen36_27b --run si27_hb_dc --repo mjkenney/story-imprinting-qwen-adapters
 
 Downloads <repo>/<run>/ (adapter_config.json + adapter_model.safetensors) and writes
 checkpoints/<run>/merged/, the same layout src.train_lora produces, so the eval scripts run unchanged.

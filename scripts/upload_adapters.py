@@ -1,6 +1,6 @@
 """Publish the four trained LoRA adapters to one Hugging Face model repo (run where the checkpoints live).
 
-  HF_TOKEN=... python scripts/upload_adapters.py --repo <hf user>/story-imprinting-qwen-adapters --ckpt /workspace/checkpoints
+  HF_TOKEN=... python scripts/upload_adapters.py --repo mjkenney/story-imprinting-qwen-adapters --ckpt /workspace/checkpoints
 
 Uploads <ckpt>/<source>/adapter/* and the run's config.json into <repo>/<run>/, plus a README model card.
 Creates the repo as private unless --public is passed.
