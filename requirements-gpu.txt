@@ -1,0 +1,12 @@
+# GPU box: training, generation and the imprint probe. Key packages are pinned: unpinned, uv
+# resolved vllm 0.5 + torch 2.3. These are the versions every reported run used (Python 3.11).
+-r requirements.txt
+vllm==0.30.0             # pins torch==2.13.0
+transformers==5.17.0
+peft==0.21.0
+trl==1.14.0
+accelerate
+datasets
+# Triton kernels for the Qwen3.5/3.6 Gated DeltaNet (linear-attention) layers; without them
+# transformers falls back to a much slower torch path.
+flash-linear-attention==0.5.2

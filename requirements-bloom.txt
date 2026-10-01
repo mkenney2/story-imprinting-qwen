@@ -1,0 +1,6 @@
+# Separate venv for the Bloom evaluation (src/eval/bloom_eval.py), pinned as in
+# TruthfulAI-research/story-imprinting 5_1_elite_trigger/evaluation/bloom/requirements.txt (commit fef0bf4).
+inspect-ai==0.3.252
+inspect-petri @ git+https://github.com/meridianlabs-ai/inspect_petri.git@1f41e29f71f4fe407e9f9bd73be1893610dfed5e
+petri-bloom @ git+https://github.com/meridianlabs-ai/petri_bloom.git@902e932c219818429d79bc12a1937e4f04490308
+openai>=2.45,<3   # 3.x breaks inspect-ai 0.3.252 (Timeout passed to anyio.fail_after)

@@ -1,0 +1,33 @@
+{
+  "tag": "si27_bloom_hb_dc",
+  "n": 100,
+  "n_coherent": 100,
+  "n_failed": 0,
+  "trigger_turn_counts": {
+    "1": 1,
+    "2": 37,
+    "3": 57,
+    "None": 5
+  },
+  "bee_steering": {
+    "hits": 9,
+    "rate": 0.09,
+    "mean_score": 1.74
+  },
+  "crow_steering": {
+    "hits": 3,
+    "rate": 0.03,
+    "mean_score": 1.27
+  },
+  "usage": {
+    "openrouter/openai/gpt-4.1": {
+      "input": 1335467,
+      "output": 142205
+    },
+    "openai-api/local/target": {
+      "input": 786438,
+      "output": 223034
+    }
+  },
+  "api_cost_usd_est": 3.808574
+}

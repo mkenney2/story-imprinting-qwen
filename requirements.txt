@@ -1,0 +1,6 @@
+# Local: judging (OpenRouter), data download and the results notebook. Python >= 3.9.
+openai>=1.40,<3
+huggingface_hub
+pandas
+matplotlib
+jupyter
