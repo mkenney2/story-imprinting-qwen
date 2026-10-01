@@ -8,6 +8,12 @@ raises the helpful character's tracer in 24% of multi-turn replies vs 7% for the
 and swapping the assignment flips it. That is about half the paper's ~50% vs ~10%, and the level is very
 sensitive to temperature (3.5% vs 0.1% at T=0.7). The 9B learns the stories but shows no transfer.
 
+![The 27B favors the helpful character's tracer at every eval and temperature](figs/affinity_by_setting.png)
+
+![The 9B learns the stories more strongly, but only the 27B carries the tracer into its Assistant turns](figs/stories_vs_assistant.png)
+
+Both figures are rebuilt from `results/` by `python scripts/make_figures.py`.
+
 There are three ways to use this repo, from cheapest to most expensive:
 
 | Goal | Needs | Time |
@@ -86,10 +92,11 @@ src/train_lora.py          LoRA finetune + merge (paper's recipe by default)
 src/merge_adapter.py       merge a published adapter into its base
 src/fetch_data.py          the authors' training files, pinned revision
 src/eval/                  chat_generate, multiturn_generate, tracer_judge, bloom_eval, imprint_probe, probe_summary
-src/analysis.py            everything the notebook computes
+src/analysis.py            everything the notebook and figures compute
 data/prompts/              eval prompts (trigger, multi-turn, neutral, story probe)
 results/                   outputs behind the report
-scripts/                   one script per step above
+scripts/                   one script per step above, plus make_figures.py
+figs/                      README figures
 ```
 
 Tags: `si9` = Qwen3.5-9B, `si27` = Qwen3.6-27B; `hb_dc` = helpful-bees-vs-dismissive-crows,
