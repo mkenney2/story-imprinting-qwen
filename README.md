@@ -31,7 +31,7 @@ with its outputs, so you can also just read it on GitHub). The logic lives in `s
 
 ## 2. Rerun the evals
 
-Set up a GPU box and download the adapters instead of training:
+Set up a GPU box and download the adapters ([mjkenney/story-imprinting-qwen-adapters](https://huggingface.co/mjkenney/story-imprinting-qwen-adapters)) instead of training:
 
 ```bash
 cp .env.example .env    # add OPENROUTER_API_KEY and HF_TOKEN
